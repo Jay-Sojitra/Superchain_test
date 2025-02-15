@@ -16,11 +16,14 @@ contract TestDeploy is Script {
         address deployer = vm.addr(deployerPrivateKey);
         console.log("deployer:", deployer);
 
-        // Deploy factory on ChainA if not already deployed
-        uint256 fork1 = vm.createFork("http://127.0.0.1:9545");
-        uint256 fork2 = vm.createFork("http://127.0.0.1:9546");
+        // Chain IDs for OPChainA and OPChainB (replace with actual chain IDs)
+        uint256 chainIdOPChainA = 901; // Replace with actual chain ID for OPChainA
+        uint256 chainIdOPChainB = 902; // Replace with actual chain ID for OPChainB
 
-        // vm.createSelectFork("http://127.0.0.1:9545"); // OPChainA
+        // Deploy factory on ChainA if not already deployed
+        uint256 fork1 = vm.createFork("http://127.0.0.1:9545"); // OPChainA
+        uint256 fork2 = vm.createFork("http://127.0.0.1:9546"); // OPChainB
+
         vm.selectFork(fork1); // OPChainA
         vm.startBroadcast(deployerPrivateKey);
 
@@ -62,6 +65,7 @@ contract TestDeploy is Script {
         }
 
         vm.stopBroadcast();
+
         // Switch back to ChainA to set up sibling relationship
         vm.selectFork(fork1);
         vm.startBroadcast(deployerPrivateKey);
@@ -80,10 +84,14 @@ contract TestDeploy is Script {
         console.log("L2CrossDomainMessenger initialized:", success);
 
         // Check if sibling is already added
-        address[] memory siblings = factoryA.getSiblingFactories();
+        SuperchainFactory.SiblingFactory[] memory siblings = factoryA
+            .getSiblingFactories();
         bool siblingExists = false;
         for (uint i = 0; i < siblings.length; i++) {
-            if (siblings[i] == factoryOPChainB) {
+            if (
+                siblings[i].factoryAddress == factoryOPChainB &&
+                siblings[i].chainId == chainIdOPChainB
+            ) {
                 siblingExists = true;
                 break;
             }
@@ -91,7 +99,7 @@ contract TestDeploy is Script {
 
         if (!siblingExists) {
             console.log("Adding ChainB factory as sibling");
-            factoryA.addSiblingFactory(factoryOPChainB);
+            factoryA.addSiblingFactory(chainIdOPChainB, factoryOPChainB);
         }
 
         // Deploy TestToken
@@ -136,7 +144,7 @@ contract TestDeploy is Script {
         bytes32 salt,
         bytes32 codeHash,
         address deployer
-    ) internal pure override returns (address) {
+    ) internal override pure returns (address) {
         return
             address(
                 uint160(
