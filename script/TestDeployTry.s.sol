@@ -35,7 +35,7 @@ contract TestDeploy is Script {
 
         if (size == 0) {
             console.log("Deploying new factory on ChainA");
-            factoryA = new SuperchainFactory(L2_CROSS_DOMAIN_MESSENGER);
+            factoryA = new SuperchainFactory();
             factoryOPChainA = address(factoryA);
         } else {
             console.log("Using existing factory on ChainA");
@@ -55,9 +55,7 @@ contract TestDeploy is Script {
 
         if (size == 0) {
             console.log("Deploying new factory on ChainB");
-            SuperchainFactory factoryB = new SuperchainFactory(
-                L2_CROSS_DOMAIN_MESSENGER
-            );
+            SuperchainFactory factoryB = new SuperchainFactory();
             factoryOPChainB = address(factoryB);
         } else {
             console.log("Using existing factory on ChainB");
@@ -67,6 +65,19 @@ contract TestDeploy is Script {
         // Switch back to ChainA to set up sibling relationship
         vm.selectFork(fork1);
         vm.startBroadcast(deployerPrivateKey);
+
+        uint256 messengerSize;
+        assembly {
+            messengerSize := extcodesize(L2_CROSS_DOMAIN_MESSENGER)
+        }
+        console.log("L2CrossDomainMessenger code size:", messengerSize);
+        require(messengerSize > 0, "L2CrossDomainMessenger not deployed");
+
+        // Check if it's initialized
+        (bool success, ) = L2_CROSS_DOMAIN_MESSENGER.staticcall(
+            abi.encodeWithSignature("version()")
+        );
+        console.log("L2CrossDomainMessenger initialized:", success);
 
         // Check if sibling is already added
         address[] memory siblings = factoryA.getSiblingFactories();

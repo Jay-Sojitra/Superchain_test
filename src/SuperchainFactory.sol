@@ -2,10 +2,12 @@
 pragma solidity ^0.8.0;
 
 import {IL2CrossDomainMessenger} from "optimism/packages/contracts-bedrock/interfaces/L2/IL2CrossDomainMessenger.sol";
+import {Predeploys} from "optimism/packages/contracts-bedrock/src/libraries/Predeploys.sol";
 
 contract SuperchainFactory {
     // Immutable reference to the L2 CrossDomainMessenger
-    IL2CrossDomainMessenger public immutable messenger;
+    IL2CrossDomainMessenger internal messenger =
+        IL2CrossDomainMessenger(Predeploys.L2_TO_L2_CROSS_DOMAIN_MESSENGER);
 
     // Addresses of the same factory contract on other chains
     address[] public siblingFactories;
@@ -29,8 +31,8 @@ contract SuperchainFactory {
         _;
     }
 
-    constructor(address _messenger) {
-        messenger = IL2CrossDomainMessenger(_messenger);
+    constructor() {
+        // messenger = IL2CrossDomainMessenger(_messenger);
         owner = msg.sender;
     }
 
