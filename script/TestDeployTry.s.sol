@@ -29,7 +29,7 @@ contract TestDeploy is Script {
 
         // First deploy the factory if not already deployed
         SuperchainFactory factoryA;
-        address factoryOPChainA = 0x700b6A60ce7EaaEA56F065753d8dcB9653dbAD35;
+        address factoryOPChainA = 0x5FbDB2315678afecb367f032d93F642f64180aa3;
 
         uint size;
         assembly {
@@ -50,7 +50,7 @@ contract TestDeploy is Script {
         vm.selectFork(fork2); // OPChainB
         vm.startBroadcast(deployerPrivateKey);
 
-        address factoryOPChainB = 0x700b6A60ce7EaaEA56F065753d8dcB9653dbAD35;
+        address factoryOPChainB = 0x5FbDB2315678afecb367f032d93F642f64180aa3;
 
         assembly {
             size := extcodesize(factoryOPChainB)
@@ -120,7 +120,7 @@ contract TestDeploy is Script {
         vm.stopBroadcast();
 
         // Wait for a few blocks to allow cross-chain message to be processed
-        vm.roll(block.number + 5);
+        vm.roll(block.number + 1);
 
         // Verify deployment on ChainB
         vm.selectFork(fork2);

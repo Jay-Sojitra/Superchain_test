@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {IL2ToL2CrossDomainMessenger} from "optimism/packages/contracts-bedrock/interfaces/L2/IL2ToL2CrossDomainMessenger.sol";
+import {IL2ToL2CrossDomainMessenger} from "lib/optimism/packages/contracts-bedrock/interfaces/L2/IL2ToL2CrossDomainMessenger.sol"; 
 import {Predeploys} from "optimism/packages/contracts-bedrock/src/libraries/Predeploys.sol";
 
 error CallerNotL2ToL2CrossDomainMessenger();
@@ -20,15 +20,6 @@ contract SuperchainFactory {
         _;
     }
 
-    // Struct to hold sibling factory information
-    struct SiblingFactory {
-        uint256 chainId;
-        address factoryAddress;
-    }
-
-    // Array of sibling factories with chain IDs
-    SiblingFactory[] public siblingFactories;
-
     // Contract owner
     address public owner;
 
@@ -41,10 +32,6 @@ contract SuperchainFactory {
         uint256 indexed chainId,
         address indexed targetFactory
     );
-    event SiblingFactoryAdded(
-        uint256 indexed chainId,
-        address indexed factoryAddress
-    );
 
     modifier onlyOwner() {
         require(msg.sender == owner, "SuperchainFactory: Only owner can call");
@@ -56,50 +43,29 @@ contract SuperchainFactory {
     }
 
     /**
-     * @dev Adds a new sibling factory address with chain ID.
-     * @param chainId The chain ID where the sibling factory is deployed.
-     * @param factoryAddress The address of the sibling factory contract.
-     */
-    function addSiblingFactory(
-        uint256 chainId,
-        address factoryAddress
-    ) external onlyOwner {
-        require(
-            factoryAddress != address(0),
-            "SuperchainFactory: Invalid address"
-        );
-        siblingFactories.push(SiblingFactory(chainId, factoryAddress));
-        emit SiblingFactoryAdded(chainId, factoryAddress);
-    }
-
-    /**
-     * @dev Deploys a contract on the current chain and sends cross-chain messages to deploy on all sibling chains.
+     * @dev Deploys a contract on the current chain and sends cross-chain messages to deploy it on the specified chains.
+     * @param chainIds Array of chain IDs on which to deploy the contract.
      * @param bytecode The creation bytecode of the contract to deploy.
      * @param salt A unique salt for deterministic deployment (CREATE2).
      */
-    function deployEverywhere(bytes memory bytecode, bytes32 salt) external {
+    function deployEverywhere(
+        uint256[] calldata chainIds,
+        bytes memory bytecode,
+        bytes32 salt
+    ) external onlyOwner {
         // Step 1: Deploy on the current chain
         address deployedAddr = _deploy(bytecode, salt);
         emit ContractDeployed(deployedAddr, block.chainid);
 
-        // Step 2: Send cross-chain messages to sibling chains
-        for (uint i = 0; i < siblingFactories.length; i++) {
-            SiblingFactory memory sibling = siblingFactories[i];
-
-            // Encode the deploy call for the target factory
-            bytes memory message = abi.encodeCall(
-                this.deploy,
-                (bytecode, salt)
-            );
-
-            // Send cross-chain message
+        // Step 2: Send cross-chain messages to each target chain.
+        for (uint i = 0; i < chainIds.length; i++) {
+            bytes memory message = abi.encodeCall(this.deploy, (bytecode, salt));
             messenger.sendMessage(
-                sibling.chainId,
-                sibling.factoryAddress,
+                chainIds[i],
+                address(this),
                 message
             );
-
-            emit CrossChainMessageSent(sibling.chainId, sibling.factoryAddress);
+            emit CrossChainMessageSent(chainIds[i], address(this));
         }
     }
 
@@ -113,20 +79,6 @@ contract SuperchainFactory {
         bytes32 salt
     ) external onlyCrossDomainCallback {
         _deploy(bytecode, salt);
-    }
-
-    /**
-     * @dev Checks if an address is a registered sibling factory.
-     * @param factory Address to check.
-     * @return True if the address is a sibling factory.
-     */
-    function isSiblingFactory(address factory) public view returns (bool) {
-        for (uint i = 0; i < siblingFactories.length; i++) {
-            if (siblingFactories[i].factoryAddress == factory) {
-                return true;
-            }
-        }
-        return false;
     }
 
     /**
@@ -147,16 +99,5 @@ contract SuperchainFactory {
             }
         }
         return addr;
-    }
-
-    /**
-     * @dev Returns the list of sibling factories.
-     */
-    function getSiblingFactories()
-        external
-        view
-        returns (SiblingFactory[] memory)
-    {
-        return siblingFactories;
     }
 }
