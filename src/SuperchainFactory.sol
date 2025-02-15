@@ -1,16 +1,33 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {IL2CrossDomainMessenger} from "optimism/packages/contracts-bedrock/interfaces/L2/IL2CrossDomainMessenger.sol";
+import {IL2ToL2CrossDomainMessenger} from "optimism/packages/contracts-bedrock/interfaces/L2/IL2ToL2CrossDomainMessenger.sol";
 import {Predeploys} from "optimism/packages/contracts-bedrock/src/libraries/Predeploys.sol";
+
+error CallerNotL2ToL2CrossDomainMessenger();
+error InvalidCrossDomainSender();
 
 contract SuperchainFactory {
     // Immutable reference to the L2 CrossDomainMessenger
-    IL2CrossDomainMessenger internal messenger =
-        IL2CrossDomainMessenger(Predeploys.L2_TO_L2_CROSS_DOMAIN_MESSENGER);
+    IL2ToL2CrossDomainMessenger internal messenger =
+        IL2ToL2CrossDomainMessenger(Predeploys.L2_TO_L2_CROSS_DOMAIN_MESSENGER);
 
-    // Addresses of the same factory contract on other chains
-    address[] public siblingFactories;
+    modifier onlyCrossDomainCallback() {
+        if (msg.sender != address(messenger))
+            revert CallerNotL2ToL2CrossDomainMessenger();
+        if (messenger.crossDomainMessageSender() != address(this))
+            revert InvalidCrossDomainSender();
+        _;
+    }
+
+    // Struct to hold sibling factory information
+    struct SiblingFactory {
+        uint256 chainId;
+        address factoryAddress;
+    }
+
+    // Array of sibling factories with chain IDs
+    SiblingFactory[] public siblingFactories;
 
     // Contract owner
     address public owner;
@@ -24,7 +41,10 @@ contract SuperchainFactory {
         uint256 indexed chainId,
         address indexed targetFactory
     );
-    event SiblingFactoryAdded(address indexed siblingFactory);
+    event SiblingFactoryAdded(
+        uint256 indexed chainId,
+        address indexed factoryAddress
+    );
 
     modifier onlyOwner() {
         require(msg.sender == owner, "SuperchainFactory: Only owner can call");
@@ -32,18 +52,24 @@ contract SuperchainFactory {
     }
 
     constructor() {
-        // messenger = IL2CrossDomainMessenger(_messenger);
         owner = msg.sender;
     }
 
     /**
-     * @dev Adds a new sibling factory address.
-     * @param sibling The address of the sibling factory contract.
+     * @dev Adds a new sibling factory address with chain ID.
+     * @param chainId The chain ID where the sibling factory is deployed.
+     * @param factoryAddress The address of the sibling factory contract.
      */
-    function addSiblingFactory(address sibling) external onlyOwner {
-        require(sibling != address(0), "SuperchainFactory: Invalid address");
-        siblingFactories.push(sibling);
-        emit SiblingFactoryAdded(sibling);
+    function addSiblingFactory(
+        uint256 chainId,
+        address factoryAddress
+    ) external onlyOwner {
+        require(
+            factoryAddress != address(0),
+            "SuperchainFactory: Invalid address"
+        );
+        siblingFactories.push(SiblingFactory(chainId, factoryAddress));
+        emit SiblingFactoryAdded(chainId, factoryAddress);
     }
 
     /**
@@ -58,17 +84,22 @@ contract SuperchainFactory {
 
         // Step 2: Send cross-chain messages to sibling chains
         for (uint i = 0; i < siblingFactories.length; i++) {
-            bytes memory message = abi.encodeWithSignature(
-                "deploy(bytes,bytes32)",
-                bytecode,
-                salt
+            SiblingFactory memory sibling = siblingFactories[i];
+
+            // Encode the deploy call for the target factory
+            bytes memory message = abi.encodeCall(
+                this.deploy,
+                (bytecode, salt)
             );
+
+            // Send cross-chain message
             messenger.sendMessage(
-                siblingFactories[i],
-                message,
-                2_000_000 // Gas limit (adjustable)
+                sibling.chainId,
+                sibling.factoryAddress,
+                message
             );
-            emit CrossChainMessageSent(block.chainid, siblingFactories[i]);
+
+            emit CrossChainMessageSent(sibling.chainId, sibling.factoryAddress);
         }
     }
 
@@ -77,25 +108,21 @@ contract SuperchainFactory {
      * @param bytecode The creation bytecode of the contract to deploy.
      * @param salt A unique salt for deterministic deployment (CREATE2).
      */
-    function deploy(bytes memory bytecode, bytes32 salt) external {
-        // Ensure the call is from the CrossDomainMessenger and the sender is the source factory
-        require(
-            msg.sender == address(messenger),
-            "SuperchainFactory: Only callable by CrossDomainMessenger"
-        );
-        address sourceFactory = messenger.xDomainMessageSender();
-        require(
-            sourceFactory == address(this) || isSiblingFactory(sourceFactory),
-            "SuperchainFactory: Invalid sender"
-        );
-
-        // Deploy the contract
+    function deploy(
+        bytes memory bytecode,
+        bytes32 salt
+    ) external onlyCrossDomainCallback {
         _deploy(bytecode, salt);
     }
 
+    /**
+     * @dev Checks if an address is a registered sibling factory.
+     * @param factory Address to check.
+     * @return True if the address is a sibling factory.
+     */
     function isSiblingFactory(address factory) public view returns (bool) {
         for (uint i = 0; i < siblingFactories.length; i++) {
-            if (siblingFactories[i] == factory) {
+            if (siblingFactories[i].factoryAddress == factory) {
                 return true;
             }
         }
@@ -125,7 +152,11 @@ contract SuperchainFactory {
     /**
      * @dev Returns the list of sibling factories.
      */
-    function getSiblingFactories() external view returns (address[] memory) {
+    function getSiblingFactories()
+        external
+        view
+        returns (SiblingFactory[] memory)
+    {
         return siblingFactories;
     }
 }

@@ -23,9 +23,7 @@ contract DeployFactory is Script {
         // Deploy on Chain 1 (OPChainA)
         vm.selectFork(fork1);
         vm.startBroadcast(deployerPrivateKey);
-        SuperchainFactory factory1 = new SuperchainFactory(
-            0x4200000000000000000000000000000000000023
-        );
+        SuperchainFactory factory1 = new SuperchainFactory();
         factoryAddresses[0] = address(factory1);
         vm.stopBroadcast();
         console.log("Factory on OPChainA:", factoryAddresses[0]);
@@ -33,9 +31,7 @@ contract DeployFactory is Script {
         // Deploy on Chain 2 (OPChainB)
         vm.selectFork(fork2);
         vm.startBroadcast(deployerPrivateKey);
-        SuperchainFactory factory2 = new SuperchainFactory(
-            0x4200000000000000000000000000000000000023
-        );
+        SuperchainFactory factory2 = new SuperchainFactory();
         factoryAddresses[1] = address(factory2);
         vm.stopBroadcast();
         console.log("Factory on OPChainB:", factoryAddresses[1]);
@@ -44,22 +40,47 @@ contract DeployFactory is Script {
         vm.selectFork(fork1);
         vm.startBroadcast(deployerPrivateKey);
         SuperchainFactory(factoryAddresses[0]).addSiblingFactory(
+            chains[1].chainId,
             factoryAddresses[1]
         );
         vm.stopBroadcast();
-        address[] memory siblings = factory1.getSiblingFactories();
-        console.log("Sibling factories on OPChainA:", siblings[0]);
+
+        SuperchainFactory.SiblingFactory[] memory siblings = factory1
+            .getSiblingFactories();
+
+        console.log("Sibling factories on OPChainA:");
+
+        for (uint256 i = 0; i < siblings.length; i++) {
+            console.log(
+                "Chain ID:",
+                siblings[i].chainId,
+                "Factory Address:",
+                siblings[i].factoryAddress
+            );
+        }
 
         // Add siblings (Chain 2)
         vm.selectFork(fork2);
         vm.startBroadcast(deployerPrivateKey);
         SuperchainFactory(factoryAddresses[1]).addSiblingFactory(
+            chains[0].chainId,
             factoryAddresses[0]
         );
 
         vm.stopBroadcast();
+
         siblings = factory2.getSiblingFactories();
-        console.log("Sibling factories on OPChainB:", siblings[0]);
+
+        console.log("Sibling factories on OPChainB:");
+
+        for (uint256 i = 0; i < siblings.length; i++) {
+            console.log(
+                "Chain ID:",
+                siblings[i].chainId,
+                "Factory Address:",
+                siblings[i].factoryAddress
+            );
+        }
 
         console.log("Sibling factories added successfully!");
     }
